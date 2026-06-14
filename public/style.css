@@ -43,9 +43,8 @@ body{
 /* ── Урон за подарки ── */
 .gift-legend{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:11px 12px; margin-bottom:12px;}
 .gl-title{font-size:12px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:1.2px; margin-bottom:9px;}
-.gl-row{display:flex; gap:7px; overflow-x:auto; padding-bottom:3px; -webkit-overflow-scrolling:touch; scrollbar-width:none;}
-.gl-row::-webkit-scrollbar{display:none;}
-.gl-pill{flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:2px; background:#0c1330; border:1px solid var(--line); border-radius:12px; padding:8px 11px; min-width:74px;}
+.gl-row{display:flex; flex-wrap:wrap; gap:7px;}
+.gl-pill{flex:1 1 auto; display:flex; flex-direction:column; align-items:center; gap:2px; background:#0c1330; border:1px solid var(--line); border-radius:12px; padding:8px 6px; min-width:62px;}
 .gl-pill b{font-size:13px; font-weight:800; white-space:nowrap;}
 .gl-pill i{font-size:15px; font-weight:900; font-style:normal; color:#ff9caa;}
 .gl-pill.sup{border-color:var(--gold);}

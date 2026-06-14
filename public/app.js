@@ -6,6 +6,62 @@ const fmt = (n) => Number(n || 0).toLocaleString('ru-RU');
 
 let bossBg = 'fire';
 
+// ── Звук (Web Audio, без файлов) ────────────────────────────────────
+const Sound = (() => {
+  let ctx = null;
+  let muted = localStorage.getItem('bvv_muted') === '1';
+  function ensure() {
+    if (!ctx) {
+      try { ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { return null; }
+    }
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+  // тон: частота, длительность, тип, громкость, glide-к частоте
+  function tone(freq, dur, type = 'sine', gain = 0.2, toFreq = null, delay = 0) {
+    const c = ensure(); if (!c || muted) return;
+    const t0 = c.currentTime + delay;
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    if (toFreq) osc.frequency.exponentialRampToValueAtTime(toFreq, t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g); g.connect(c.destination);
+    osc.start(t0); osc.stop(t0 + dur + 0.02);
+  }
+  // шум (взрыв)
+  function noise(dur, gain = 0.35) {
+    const c = ensure(); if (!c || muted) return;
+    const t0 = c.currentTime;
+    const buf = c.createBuffer(1, c.sampleRate * dur, c.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const src = c.createBufferSource(); src.buffer = buf;
+    const g = c.createGain();
+    g.gain.setValueAtTime(gain, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1200;
+    src.connect(lp); lp.connect(g); g.connect(c.destination);
+    src.start(t0); src.stop(t0 + dur);
+  }
+  return {
+    hit() { tone(420, 0.09, 'square', 0.12, 220); },
+    crit(x) { tone(720, 0.12, 'sawtooth', 0.2, 360); tone(1080, 0.14, 'square', 0.12, 540, 0.04); if (x >= 5) tone(1440, 0.16, 'sawtooth', 0.12, 700, 0.08); },
+    mvp() { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.16, 'triangle', 0.18, null, i * 0.09)); },
+    defeated() { noise(0.6, 0.4); tone(180, 0.7, 'sawtooth', 0.25, 50); tone(90, 0.8, 'square', 0.18, 40, 0.05); },
+    isMuted() { return muted; },
+    unlock() { ensure(); },
+    toggle() { muted = !muted; localStorage.setItem('bvv_muted', muted ? '1' : '0'); if (!muted) ensure(); return muted; }
+  };
+})();
+// разблокировать аудио на первом касании (требование мобильных браузеров)
+['pointerdown', 'touchstart', 'click'].forEach(ev =>
+  window.addEventListener(ev, () => Sound.unlock(), { once: true, passive: true }));
+
 // ── Состояние ───────────────────────────────────────────────────────
 socket.on('state', render);
 socket.on('hall', (d) => renderHall(d.hall || []));
@@ -102,6 +158,7 @@ socket.on('hit', (d) => {
   pop.textContent = (d.critX ? `КРИТ x${d.critX} ` : '') + '-' + fmt(d.damage);
   $('popLayer').appendChild(pop);
   setTimeout(() => pop.remove(), 1000);
+  if (d.critX) Sound.crit(d.critX); else Sound.hit();
 });
 
 // ── Новый MVP ───────────────────────────────────────────────────────
@@ -112,6 +169,7 @@ socket.on('newmvp', (d) => {
   ov.classList.add('show');
   clearTimeout(mvpTimer);
   mvpTimer = setTimeout(() => ov.classList.remove('show'), 1800);
+  Sound.mvp();
 });
 
 // ── Победа над боссом ───────────────────────────────────────────────
@@ -127,6 +185,7 @@ socket.on('defeated', (d) => {
   const ov = $('victoryOverlay');
   ov.classList.add('show');
   setTimeout(() => ov.classList.remove('show'), (d.respawnSeconds || 10) * 1000 - 1500);
+  Sound.defeated();
 });
 
 socket.on('respawn', (d) => {
@@ -140,6 +199,16 @@ socket.on('newboss', () => {
 
 // ── Управление ──────────────────────────────────────────────────────
 $('gearBtn').onclick = () => $('settings').classList.toggle('open');
+
+const soundBtn = $('soundBtn');
+if (soundBtn) {
+  soundBtn.textContent = Sound.isMuted() ? '🔇' : '🔊';
+  soundBtn.onclick = () => {
+    const m = Sound.toggle();
+    soundBtn.textContent = m ? '🔇' : '🔊';
+    if (!m) Sound.mvp(); // короткий сигнал «звук включён»
+  };
+}
 
 $('connectBtn').onclick = async () => {
   const username = $('username').value.trim();
