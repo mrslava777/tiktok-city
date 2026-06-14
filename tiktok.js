@@ -98,6 +98,7 @@ class TikTokManager {
       if (giftType === 1 && !repeatEnd) return;
 
       this.onEvent('gift', {
+        userId: uid(d),
         user: nick(d),
         giftName: d.giftName || d.gift?.name || 'подарок',
         diamondCount: diamonds(d),
@@ -109,6 +110,10 @@ class TikTokManager {
 
 function nick(d) {
   return d?.user?.nickname || d?.nickname || d?.uniqueId || 'Зритель';
+}
+
+function uid(d) {
+  return d?.user?.uniqueId || d?.uniqueId || d?.userId || d?.user?.userId || nick(d);
 }
 
 function diamonds(d) {

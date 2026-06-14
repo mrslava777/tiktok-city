@@ -1,242 +1,117 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<meta name="theme-color" content="#0b1020" />
-<title>🏰 TikTok City</title>
-<style>
-  :root{
-    --bg:#0b1020; --card:#161c34; --card2:#1e2747;
-    --text:#eaf0ff; --muted:#8b95c0; --line:#2a3358;
-    --pop:#5ec2ff; --food:#7bd88f; --tre:#ffd45e; --def:#ff7b9c;
-    --accent:#fe2c55;
-  }
-  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{margin:0; padding:0;}
-  body{
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    background:radial-gradient(120% 80% at 50% -10%,#1a2350 0%,var(--bg) 55%);
-    color:var(--text); min-height:100vh; min-height:100dvh;
-    padding:env(safe-area-inset-top) 14px calc(env(safe-area-inset-bottom) + 14px);
-  }
-  .wrap{max-width:520px; margin:0 auto;}
-  header{display:flex; align-items:center; justify-content:space-between; padding:14px 2px 10px;}
-  .title{font-size:22px; font-weight:800; letter-spacing:.3px;}
-  .title small{display:block; font-size:11px; font-weight:600; color:var(--muted); letter-spacing:1.5px; text-transform:uppercase;}
-  .status{font-size:12px; font-weight:700; padding:6px 10px; border-radius:999px; background:#3a1421; color:#ff869f; white-space:nowrap;}
-  .status.on{background:#11331f; color:#7bd88f;}
-
-  .level-card{
-    background:linear-gradient(135deg,var(--card2),var(--card));
-    border:1px solid var(--line); border-radius:20px; padding:16px; margin-bottom:14px;
-    display:flex; align-items:center; gap:14px;
-  }
-  .level-badge{
-    width:62px; height:62px; flex:0 0 62px; border-radius:18px;
-    background:radial-gradient(circle at 30% 25%,#ffe08a,#fe2c55);
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-    box-shadow:0 8px 24px rgba(254,44,85,.35); color:#1a1020; font-weight:900;
-  }
-  .level-badge b{font-size:24px; line-height:1;}
-  .level-badge span{font-size:9px; letter-spacing:1px; text-transform:uppercase; opacity:.85;}
-  .level-info{flex:1; min-width:0;}
-  .level-info .row{display:flex; justify-content:space-between; font-size:13px; color:var(--muted); margin-bottom:6px;}
-  .xpbar{height:10px; background:#0c1330; border-radius:999px; overflow:hidden;}
-  .xpbar>i{display:block; height:100%; width:0; background:linear-gradient(90deg,#ffe08a,#fe2c55); transition:width .4s ease;}
-
-  .bars{display:grid; gap:12px; margin-bottom:14px;}
-  .bar{background:var(--card); border:1px solid var(--line); border-radius:18px; padding:14px 16px;}
-  .bar .head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px;}
-  .bar .name{font-size:16px; font-weight:700; display:flex; align-items:center; gap:8px;}
-  .bar .val{font-size:18px; font-weight:800; font-variant-numeric:tabular-nums;}
-  .track{height:22px; background:#0c1330; border-radius:999px; overflow:hidden; position:relative;}
-  .fill{height:100%; width:50%; border-radius:999px; transition:width .5s cubic-bezier(.2,.8,.2,1);}
-  .fill.pop{background:linear-gradient(90deg,#2f7bd6,var(--pop));}
-  .fill.food{background:linear-gradient(90deg,#3f9c5a,var(--food));}
-  .fill.tre{background:linear-gradient(90deg,#caa12f,var(--tre));}
-  .fill.def{background:linear-gradient(90deg,#c44e6c,var(--def));}
-  .bar.low .track{box-shadow:0 0 0 2px rgba(255,80,80,.5) inset; animation:pulse 1.1s infinite;}
-  @keyframes pulse{50%{box-shadow:0 0 0 2px rgba(255,80,80,1) inset;}}
-
-  .legend-card{background:var(--card); border:1px solid var(--line); border-radius:18px; padding:12px 14px 10px; margin-bottom:14px;}
-  .legend-card h3{margin:0 0 10px; font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:1px;}
-  .legend{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px;}
-  .legend li{display:flex; align-items:center; gap:8px; font-size:14px;}
-  .legend .lg-ico{flex:0 0 auto; font-size:17px; width:22px; text-align:center;}
-  .legend .lg-name{flex:1; min-width:0; color:var(--text); font-weight:600;}
-  .legend .lg-arr{flex:0 0 auto; color:var(--muted); font-weight:700;}
-  .legend .lg-res{flex:0 0 auto; font-weight:700; font-size:13px; padding:4px 10px; border-radius:999px; background:#0c1330; border:1px solid var(--line);}
-  .legend .lg-res.pop{color:#7fb3f0;}
-  .legend .lg-res.food{color:#7bd88f;}
-  .legend .lg-res.tre{color:#e6c45a;}
-  .legend .lg-res.def{color:#f08aa3;}
-  .legend-note{margin-top:10px; font-size:12px; color:var(--muted); line-height:1.4;}
-  .log-card{background:var(--card); border:1px solid var(--line); border-radius:18px; padding:12px 6px 6px; margin-bottom:14px;}
-  .log-card h3{margin:0 10px 8px; font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:1px;}
-  #log{list-style:none; margin:0; padding:0 6px; max-height:34vh; overflow-y:auto;}
-  #log li{display:flex; gap:10px; padding:9px 8px; border-radius:12px; font-size:14px; line-height:1.35; animation:slidein .35s ease;}
-  #log li:nth-child(odd){background:rgba(255,255,255,.025);}
-  #log li .em{flex:0 0 auto; font-size:16px;}
-  #log li .tx{flex:1; min-width:0;}
-  #log li .tx b{color:#cdd6ff;}
-  #log li .tm{flex:0 0 auto; font-size:11px; color:var(--muted);}
-  @keyframes slidein{from{opacity:0; transform:translateY(-6px);}to{opacity:1;}}
-
-  .controls{background:var(--card); border:1px solid var(--line); border-radius:18px; padding:14px;}
-  .controls .field{display:flex; gap:8px; margin-bottom:10px;}
-  input[type=text]{flex:1; min-width:0; background:#0c1330; border:1px solid var(--line); color:var(--text); border-radius:12px; padding:13px 14px; font-size:16px;}
-  input::placeholder{color:#5d678f;}
-  button{border:0; border-radius:12px; padding:13px 16px; font-size:15px; font-weight:700; color:#fff; background:var(--card2); cursor:pointer;}
-  button.primary{background:linear-gradient(135deg,#fe2c55,#ff5c7a);}
-  button.ghost{background:#0c1330; color:var(--muted); border:1px solid var(--line);}
-  button:active{transform:scale(.97);}
-  .btn-row{display:flex; gap:8px; flex-wrap:wrap;}
-  .btn-row button{flex:1; min-width:90px;}
-  .hint{font-size:12px; color:var(--muted); margin-top:10px; line-height:1.4;}
-  .err{color:#ff869f; font-size:13px; margin-top:8px; min-height:0;}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a16" />
+  <title>⚔️ Boss vs Viewers</title>
+  <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <div class="title">🏰 TikTok City<small>живой город из стрима</small></div>
+  <div class="top">
+    <h1>⚔️ Boss <span class="sw">vs</span> Viewers</h1>
     <div id="status" class="status">офлайн</div>
-  </header>
+    <button id="gearBtn" class="gear" title="Настройки">⚙️</button>
+  </div>
 
-  <div class="level-card">
-    <div class="level-badge"><b id="level">1</b><span>уровень</span></div>
-    <div class="level-info">
-      <div class="row"><span>Опыт города</span><span id="xpText">0 / 100</span></div>
-      <div class="xpbar"><i id="xpFill"></i></div>
-      <div class="row" style="margin-top:8px; margin-bottom:0;"><span>Всего набрано</span><span id="totalXp">0</span></div>
+  <!-- MVP -->
+  <div id="mvp" class="mvp-banner empty">
+    <div class="crown">👑</div>
+    <div class="info">
+      <div class="lbl">MVP ИГРОК</div>
+      <div class="nm" id="mvpName">—</div>
+      <div class="sub" id="mvpSub">пока никто не атаковал</div>
+    </div>
+    <div class="streak" id="mvpStreak">x0</div>
+  </div>
+
+  <!-- Босс -->
+  <div class="boss-stage" id="bossStage">
+    <div class="bgglow bg-fire" id="bossBg"></div>
+    <div class="pop-layer" id="popLayer"></div>
+    <div class="respawn-badge" id="respawn">
+      <div class="rn" id="respawnNum">15</div>
+      <div class="rl">НОВЫЙ БОСС ЧЕРЕЗ…</div>
+    </div>
+    <div class="stage-in">
+      <div class="boss-name" id="bossName">Босс</div>
+      <div class="boss-emoji" id="bossEmoji">🐲</div>
+      <div class="hpbar"><i id="hpFill" style="width:100%"></i><div class="hptext" id="hpText">—</div></div>
+      <div class="hp-meta">
+        <span id="hpNum">0 / 0</span>
+        <span class="pct" id="hpPct">100%</span>
+      </div>
     </div>
   </div>
 
-  <div class="bars" id="bars">
-    <div class="bar" data-key="population">
-      <div class="head"><div class="name">👥 Население</div><div class="val">0</div></div>
-      <div class="track"><div class="fill pop"></div></div>
+  <!-- ТОП-10 -->
+  <div class="panel">
+    <div class="card-h">🏆 Топ-10 игроков</div>
+    <ul class="top-list" id="top"><li class="top-empty">Ещё никто не наносил урон — будь первым!</li></ul>
+  </div>
+
+  <!-- Лента -->
+  <div class="panel">
+    <div class="card-h">📜 Живая лента событий</div>
+    <ul id="feed"></ul>
+  </div>
+
+  <!-- Нижняя панель -->
+  <div class="dock">
+    <div class="settings" id="settings">
+      <div class="field">
+        <input id="username" type="text" placeholder="@username TikTok лайва" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        <button id="connectBtn" class="primary" style="flex:0 0 auto;">Подключить</button>
+      </div>
+      <div class="btn-row">
+        <button id="simBtn" class="ghost">🎲 Тест-удар</button>
+        <button id="resetBtn" class="ghost">🔄 Сброс</button>
+      </div>
+      <div class="err" id="err"></div>
     </div>
-    <div class="bar" data-key="food">
-      <div class="head"><div class="name">🍞 Еда</div><div class="val">0</div></div>
-      <div class="track"><div class="fill food"></div></div>
-    </div>
-    <div class="bar" data-key="treasury">
-      <div class="head"><div class="name">💰 Казна</div><div class="val">0</div></div>
-      <div class="track"><div class="fill tre"></div></div>
-    </div>
-    <div class="bar" data-key="defense">
-      <div class="head"><div class="name">🛡️ Защита</div><div class="val">0</div></div>
-      <div class="track"><div class="fill def"></div></div>
+    <div class="dock-bar">
+      <button id="hallBtn" class="gold">🏛️ Зал Славы</button>
+      <button id="simBtn2" class="ghost">🎲 Тест-удар</button>
     </div>
   </div>
 
-  <div class="legend-card">
-    <h3>🎁 Что даёт каждое событие</h3>
-    <ul class="legend">
-      <li><span class="lg-ico">❤️</span><span class="lg-name">Лайк</span><span class="lg-arr">→</span><span class="lg-res food">🍞 Еда</span></li>
-      <li><span class="lg-ico">💬</span><span class="lg-name">Комментарий</span><span class="lg-arr">→</span><span class="lg-res pop">👥 Население</span></li>
-      <li><span class="lg-ico">🎁</span><span class="lg-name">Подарок</span><span class="lg-arr">→</span><span class="lg-res tre">💰 Казна + 🛡️ Защита</span></li>
-      <li><span class="lg-ico">➕</span><span class="lg-name">Подписка</span><span class="lg-arr">→</span><span class="lg-res pop">👥 Население</span></li>
-      <li><span class="lg-ico">🔁</span><span class="lg-name">Репост</span><span class="lg-arr">→</span><span class="lg-res def">🛡️ Защита</span></li>
-    </ul>
-    <div class="legend-note">Чем дороже подарок — тем сильнее растут казна и защита 🔥</div>
-  </div>
-
-  <div class="log-card">
-    <h3>📜 Лог событий</h3>
-    <ul id="log"></ul>
-  </div>
-
-  <div class="controls">
-    <div class="field">
-      <input id="username" type="text" placeholder="@username TikTok лайва" autocomplete="off" autocapitalize="off" />
-      <button id="connectBtn" class="primary">Подключить</button>
+  <!-- Оверлей: новый MVP -->
+  <div class="overlay" id="mvpOverlay">
+    <div class="mvp-pop">
+      <div class="c">👑</div>
+      <div class="t">НОВЫЙ MVP</div>
+      <div class="n" id="mvpOverlayName">—</div>
     </div>
-    <div class="btn-row">
-      <button id="simBtn" class="ghost">🎲 Тест-событие</button>
-      <button id="resetBtn" class="ghost">🔄 Сброс</button>
-    </div>
-    <div id="err" class="err"></div>
-    <div class="hint">Подключись к активному TikTok-лайву по @username. Лайки → еда, комментарии и подписки → население, подарки → казна, репосты → защита. Кнопка «Тест-событие» имитирует активность без стрима.</div>
   </div>
-</div>
 
-<script src="/socket.io/socket.io.js"></script>
-<script>
-const socket = io();
-const $ = (s) => document.querySelector(s);
-const KEYS = {
-  population: { cls: 'pop' }, food: { cls: 'food' },
-  treasury: { cls: 'tre' }, defense: { cls: 'def' },
-};
-let connected = false;
+  <!-- Оверлей: победа -->
+  <div class="overlay" id="victoryOverlay">
+    <div class="victory">
+      <div class="boom">💥</div>
+      <div class="vt">🏆 БОСС ПОВЕРЖЕН</div>
+      <div class="row killer">
+        <div class="k">⚔️ ПОСЛЕДНИЙ УДАР — УБИЙЦА БОССА</div>
+        <div class="v" id="vKiller">—</div>
+      </div>
+      <div class="row mvpr">
+        <div class="k">👑 MVP БИТВЫ</div>
+        <div class="v" id="vMvp">—</div>
+      </div>
+      <div class="count">Боссов повержено: <b id="vCount">0</b></div>
+    </div>
+  </div>
 
-function renderState(s){
-  const max = s.max || 100;
-  for (const key of Object.keys(KEYS)){
-    const bar = document.querySelector(`.bar[data-key="${key}"]`);
-    if (!bar) continue;
-    const v = Math.round(s.city[key]);
-    const pct = Math.max(0, Math.min(100, (s.city[key] / max) * 100));
-    bar.querySelector('.val').textContent = v;
-    bar.querySelector('.fill').style.width = pct + '%';
-    bar.classList.toggle('low', s.city[key] <= max * 0.15);
-  }
-  $('#level').textContent = s.level;
-  $('#xpText').textContent = `${Math.round(s.xp)} / ${s.xpForNext}`;
-  $('#xpFill').style.width = Math.min(100, (s.xp / s.xpForNext) * 100) + '%';
-  $('#totalXp').textContent = Math.round(s.totalXp);
-}
+  <!-- Оверлей: Зал Славы -->
+  <div class="overlay" id="hallOverlay">
+    <div class="hall">
+      <h2>🏛️ Зал Славы</h2>
+      <div class="sub">Последние 50 убийц боссов</div>
+      <ul id="hallList"><li class="hall-empty">Пока никто не повержен. Стань первым героем!</li></ul>
+      <button class="close ghost" id="hallClose">Закрыть</button>
+    </div>
+  </div>
 
-function timeStr(ts){
-  const d = new Date(ts);
-  return d.toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
-}
-
-function addLog(item){
-  const ul = $('#log');
-  const li = document.createElement('li');
-  li.innerHTML = `<span class="em">${item.emoji||'•'}</span><span class="tx">${escapeHtml(item.label)}</span><span class="tm">${timeStr(item.ts)}</span>`;
-  ul.prepend(li);
-  while (ul.children.length > 40) ul.removeChild(ul.lastChild);
-}
-
-function escapeHtml(s){
-  return String(s||'').replace(/[&<>"]/g, (c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-}
-
-function setStatus(st){
-  connected = st.connected;
-  const el = $('#status');
-  el.classList.toggle('on', st.connected);
-  el.textContent = st.connected ? `🟢 @${st.username}` : 'офлайн';
-  $('#connectBtn').textContent = st.connected ? 'Отключить' : 'Подключить';
-}
-
-socket.on('state', renderState);
-socket.on('tiktok-status', setStatus);
-socket.on('event', addLog);
-socket.on('log', (items)=>{ $('#log').innerHTML=''; items.slice().reverse().forEach(addLog); });
-
-async function post(url, body){
-  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{}) });
-  return r.json();
-}
-
-$('#connectBtn').onclick = async () => {
-  $('#err').textContent = '';
-  if (connected){ await post('/api/disconnect'); return; }
-  const username = $('#username').value.trim();
-  if (!username){ $('#err').textContent = 'Введите @username'; return; }
-  $('#connectBtn').textContent = '...';
-  const res = await post('/api/connect', { username });
-  if (!res.ok){ $('#err').textContent = 'Не удалось: ' + (res.error||'ошибка'); $('#connectBtn').textContent='Подключить'; }
-};
-$('#simBtn').onclick = () => post('/api/simulate');
-$('#resetBtn').onclick = () => post('/api/reset');
-$('#username').addEventListener('keydown', (e)=>{ if(e.key==='Enter') $('#connectBtn').click(); });
-</script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/app.js"></script>
 </body>
 </html>

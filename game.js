@@ -1,170 +1,279 @@
 'use strict';
 
+const CFG = require('./config');
+
 /**
- * Игровое состояние города. Хранится ТОЛЬКО в памяти (без базы данных).
- *
- * Ресурсы измеряются в процентах (0..MAX) и показываются полосами прогресса.
- * Каждые 30 секунд ресурсы убывают (tick). События TikTok Live их пополняют.
+ * Движок боя «Boss vs Viewers».
+ * Хранит босса, игроков, MVP с серией, Зал Славы. Всё в памяти.
  */
-
-const MAX = 100; // потолок каждого ресурса
-
-// Сколько ресурса теряется каждый тик (раз в 30 сек)
-const DECAY = {
-  population: 2, // население потихоньку уходит
-  food: 4, // еда расходуется быстрее всего
-  treasury: 3, // казна тратится на содержание
-  defense: 3, // защита изнашивается
-};
-
-// Стартовые значения города
-function freshCity() {
-  return {
-    population: 50,
-    food: 60,
-    treasury: 40,
-    defense: 50,
-  };
-}
-
-class CityGame {
+class BossBattle {
   constructor() {
     this.reset();
   }
 
   reset() {
-    this.city = freshCity();
-    this.level = 1;
-    this.xp = 0; // опыт для следующего уровня
-    this.totalXp = 0; // всего набрано
-    this.ticks = 0; // сколько прошло циклов убывания
-    this.lastEventAt = null;
+    this.players = new Map(); // id -> { id, name, total, boss }
+    this.hallOfFame = [];     // последние убийцы боссов
+    this.killCount = 0;
+    this.feedSeq = 0;
+    this.currentMvpId = null;
+    this.mvpStreak = 0;
+    this.respawnAt = null;    // timestamp, когда появится новый босс
+    this.lastBossIndex = -1;
+    this._spawnBoss();
   }
 
-  // Опыт, нужный чтобы перейти с текущего уровня на следующий
-  xpForNextLevel() {
-    return 100 + (this.level - 1) * 60;
+  // ── БОСС ────────────────────────────────────────────────────────────
+  _spawnBoss() {
+    const pool = CFG.BOSSES;
+    let idx = Math.floor(Math.random() * pool.length);
+    if (pool.length > 1 && idx === this.lastBossIndex) idx = (idx + 1) % pool.length;
+    this.lastBossIndex = idx;
+    const def = pool[idx];
+    const maxHp = CFG.BOSS_HP_POOL[Math.floor(Math.random() * CFG.BOSS_HP_POOL.length)];
+    this.boss = {
+      name: def.name,
+      emoji: def.emoji,
+      bg: def.bg,
+      maxHp,
+      hp: maxHp,
+      alive: true,
+      bornAt: Date.now(),
+    };
+    // статистика урона по боссу обнуляется для всех игроков
+    for (const p of this.players.values()) p.boss = 0;
+    this.currentMvpId = null;
+    this.mvpStreak = 0;
+    this.respawnAt = null;
   }
 
-  clamp(v) {
-    return Math.max(0, Math.min(MAX, v));
-  }
-
-  // Применить изменения ресурсов и начислить опыт
-  apply(changes, xpGain = 0) {
-    for (const key of Object.keys(changes)) {
-      if (this.city[key] === undefined) continue;
-      this.city[key] = this.clamp(this.city[key] + changes[key]);
+  // ── ИГРОКИ / УРОВНИ ────────────────────────────────────────────────
+  _player(id, name) {
+    let p = this.players.get(id);
+    if (!p) {
+      p = { id, name: name || 'Зритель', total: 0, boss: 0 };
+      this.players.set(id, p);
+    } else if (name) {
+      p.name = name;
     }
-    if (xpGain > 0) {
-      this.xp += xpGain;
-      this.totalXp += xpGain;
-      while (this.xp >= this.xpForNextLevel()) {
-        this.xp -= this.xpForNextLevel();
-        this.level += 1;
-      }
+    return p;
+  }
+
+  levelOf(total) {
+    let title = CFG.LEVELS[0].title;
+    for (const lv of CFG.LEVELS) if (total >= lv.min) title = lv.title;
+    return title;
+  }
+
+  // ── ОСНОВНОЕ: УДАР ПОДАРКОМ ────────────────────────────────────────
+  /**
+   * Возвращает массив событий для трансляции:
+   *  { kind:'hit'|'crit'|'mvp'|'defeated', ... }
+   */
+  applyGift({ userId, user, giftName, diamondCount = 1, repeatCount = 1 }) {
+    const events = [];
+    // во время отсчёта до нового босса урон не проходит
+    if (!this.boss.alive) return events;
+
+    const base = giftToDamage(giftName, diamondCount) * Math.max(1, repeatCount);
+
+    // крит
+    let mult = 1;
+    let critX = 0;
+    if (Math.random() < CFG.CRIT.chance) {
+      critX = Math.random() < CFG.CRIT.x5Chance ? 5 : 2;
+      mult = critX;
     }
-    this.lastEventAt = Date.now();
-  }
+    const damage = Math.round(base * mult);
+    const dealt = Math.min(damage, this.boss.hp);
 
-  // Убывание ресурсов раз в 30 сек
-  tick() {
-    this.ticks += 1;
-    for (const key of Object.keys(DECAY)) {
-      this.city[key] = this.clamp(this.city[key] - DECAY[key]);
+    const id = userId || user || 'anon';
+    const p = this._player(id, user);
+    p.total += dealt;
+    p.boss += dealt;
+    this.boss.hp -= dealt;
+
+    const feedText = critX
+      ? `${user} нанёс КРИТ x${critX} — ${fmt(damage)} урона`
+      : `${user} нанёс ${fmt(damage)} урона`;
+    events.push({
+      kind: 'hit',
+      id: ++this.feedSeq,
+      icon: critX ? '💥' : pickHitIcon(damage),
+      text: feedText,
+      damage,
+      critX,
+      hpPercent: this.percent(),
+    });
+
+    // смена MVP?
+    const mvpChanged = this._recomputeMvp();
+    if (mvpChanged && this.currentMvpId) {
+      const mvp = this.players.get(this.currentMvpId);
+      events.push({
+        kind: 'mvp',
+        id: ++this.feedSeq,
+        icon: '👑',
+        text: `${mvp.name} стал новым MVP`,
+        name: mvp.name,
+      });
     }
+
+    // босс повержен?
+    if (this.boss.hp <= 0) {
+      this.boss.hp = 0;
+      this.boss.alive = false;
+      this.killCount += 1;
+      this.respawnAt = Date.now() + CFG.RESPAWN_SECONDS * 1000;
+
+      const mvp = this.currentMvpId ? this.players.get(this.currentMvpId) : p;
+      const record = {
+        player: p.name,
+        boss: this.boss.name,
+        damage: p.boss,
+        mvp: mvp ? mvp.name : p.name,
+        time: Date.now(),
+      };
+      this.hallOfFame.unshift(record);
+      if (this.hallOfFame.length > CFG.HALL_OF_FAME_LIMIT) this.hallOfFame.pop();
+
+      events.push({
+        kind: 'defeated',
+        id: ++this.feedSeq,
+        icon: '🏆',
+        text: `${p.name} нанёс последний удар! ${this.boss.name} повержен`,
+        killer: p.name,
+        boss: this.boss.name,
+        mvp: mvp ? mvp.name : p.name,
+        respawnSeconds: CFG.RESPAWN_SECONDS,
+      });
+    }
+
+    return events;
   }
 
-  // Город в опасности, если любой ресурс на нуле
-  dangerKeys() {
-    return Object.keys(this.city).filter((k) => this.city[k] <= 0);
+  // пересчёт MVP по урону текущему боссу. true, если лидер сменился
+  _recomputeMvp() {
+    let leader = null;
+    for (const p of this.players.values()) {
+      if (p.boss <= 0) continue;
+      if (!leader || p.boss > leader.boss) leader = p;
+    }
+    const newId = leader ? leader.id : null;
+    if (newId && newId !== this.currentMvpId) {
+      this.currentMvpId = newId;
+      this.mvpStreak = 1;
+      return true;
+    }
+    return false;
   }
 
-  snapshot() {
+  // вызывается раз в минуту: если MVP держится — серия растёт
+  tickMvpStreak() {
+    if (this.currentMvpId && this.boss.alive) {
+      this.mvpStreak += 1;
+      return this.mvpStreak;
+    }
+    return 0;
+  }
+
+  // проверка таймера возрождения. Возвращает нового босса, если появился
+  tickRespawn() {
+    if (!this.boss.alive && this.respawnAt && Date.now() >= this.respawnAt) {
+      this._spawnBoss();
+      return this.boss;
+    }
+    return null;
+  }
+
+  // ── СНИМОК СОСТОЯНИЯ ДЛЯ ИНТЕРФЕЙСА ────────────────────────────────
+  percent() {
+    return this.boss.maxHp ? Math.max(0, (this.boss.hp / this.boss.maxHp) * 100) : 0;
+  }
+
+  top(n = CFG.TOP_N) {
+    const arr = [...this.players.values()]
+      .filter((p) => p.boss > 0)
+      .sort((a, b) => b.boss - a.boss)
+      .slice(0, n);
+    return arr.map((p, i) => ({
+      rank: i + 1,
+      name: p.name,
+      damage: p.boss,
+      level: this.levelOf(p.total),
+      isMvp: p.id === this.currentMvpId,
+    }));
+  }
+
+  mvp() {
+    if (!this.currentMvpId) return null;
+    const p = this.players.get(this.currentMvpId);
+    if (!p) return null;
     return {
-      city: { ...this.city },
-      max: MAX,
-      level: this.level,
-      xp: this.xp,
-      xpForNext: this.xpForNextLevel(),
-      totalXp: this.totalXp,
-      ticks: this.ticks,
-      danger: this.dangerKeys(),
+      name: p.name,
+      damage: p.boss,
+      total: p.total,
+      streak: this.mvpStreak,
+      level: this.levelOf(p.total),
     };
   }
-}
 
-/**
- * Правила: как событие TikTok влияет на ресурсы.
- * Возвращает { changes, xp, label, emoji } или null, если событие игнорируем.
- */
-function mapEvent(type, payload = {}) {
-  switch (type) {
-    case 'like': {
-      const n = Math.min(payload.likeCount || 1, 30);
-      return {
-        changes: { food: n * 0.4, population: n * 0.1 },
-        xp: Math.ceil(n * 0.3),
-        emoji: '❤️',
-        label: `${payload.user || 'Зритель'} поставил ${n} лайков (+еда)`,
-      };
-    }
-    case 'chat': {
-      return {
-        changes: { population: 2 },
-        xp: 2,
-        emoji: '💬',
-        label: `${payload.user || 'Зритель'}: ${truncate(payload.comment, 40)}`,
-      };
-    }
-    case 'gift': {
-      const diamonds = Math.max(payload.diamondCount || 1, 1);
-      const repeat = Math.max(payload.repeatCount || 1, 1);
-      const value = diamonds * repeat;
-      return {
-        changes: {
-          treasury: value * 0.8,
-          defense: value * 0.3,
-          food: value * 0.2,
-        },
-        xp: Math.ceil(value * 0.6),
-        emoji: '🎁',
-        label: `${payload.user || 'Зритель'} прислал «${payload.giftName || 'подарок'}» ×${repeat} (+казна)`,
-      };
-    }
-    case 'follow': {
-      return {
-        changes: { population: 8 },
-        xp: 8,
-        emoji: '➕',
-        label: `${payload.user || 'Зритель'} подписался (+население)`,
-      };
-    }
-    case 'share': {
-      return {
-        changes: { defense: 6, population: 3 },
-        xp: 6,
-        emoji: '🔁',
-        label: `${payload.user || 'Зритель'} поделился стримом (+защита)`,
-      };
-    }
-    case 'member': {
-      return {
-        changes: { population: 1 },
-        xp: 1,
-        emoji: '👋',
-        label: `${payload.user || 'Зритель'} зашёл в город`,
-      };
-    }
-    default:
-      return null;
+  respawnLeft() {
+    if (this.boss.alive || !this.respawnAt) return 0;
+    return Math.max(0, Math.ceil((this.respawnAt - Date.now()) / 1000));
+  }
+
+  snapshot(status = {}) {
+    return {
+      status,
+      boss: {
+        name: this.boss.name,
+        emoji: this.boss.emoji,
+        bg: this.boss.bg,
+        hp: Math.round(this.boss.hp),
+        maxHp: this.boss.maxHp,
+        percent: this.percent(),
+        alive: this.boss.alive,
+      },
+      mvp: this.mvp(),
+      top: this.top(),
+      respawn: { active: !this.boss.alive, secondsLeft: this.respawnLeft() },
+      killCount: this.killCount,
+      players: this.players.size,
+    };
+  }
+
+  hall() {
+    return this.hallOfFame.map((r) => ({
+      player: r.player,
+      boss: r.boss,
+      damage: r.damage,
+      time: r.time,
+    }));
   }
 }
 
-function truncate(s, n) {
-  if (!s) return '';
-  s = String(s);
-  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+// ── ХЕЛПЕРЫ ──────────────────────────────────────────────────────────
+function giftToDamage(giftName, diamondCount) {
+  const key = String(giftName || '').trim().toLowerCase();
+  if (key && CFG.GIFT_DAMAGE.byName[key] != null) return CFG.GIFT_DAMAGE.byName[key];
+  const d = Number(diamondCount) || 1;
+  for (const tier of CFG.GIFT_DAMAGE.byDiamondTier) {
+    if (d <= tier.maxDiamonds) return tier.damage;
+  }
+  return CFG.GIFT_DAMAGE.default;
 }
 
-module.exports = { CityGame, mapEvent, MAX, DECAY };
+function pickHitIcon(damage) {
+  if (damage >= 2000) return '🚀';
+  if (damage >= 500) return '💣';
+  if (damage >= 100) return '⚔️';
+  if (damage >= 25) return '🔥';
+  return '🌹';
+}
+
+function fmt(n) {
+  return Number(n).toLocaleString('ru-RU');
+}
+
+module.exports = { BossBattle, giftToDamage };
