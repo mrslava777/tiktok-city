@@ -151,7 +151,7 @@ body {
   padding: 11px 13px; margin-bottom: 12px;
 }
 .rule-ico { font-size: 22px; line-height: 1; flex-shrink: 0; }
-.rule-text { font-size: 13px; line-height: 1.35; color: var(--text); }
+.rule-text { font-size: 13px; line-height: 1.35; color: var(--txt); }
 .rule-text b { color: var(--gold); }
 
 .legend {
