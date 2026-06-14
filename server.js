@@ -31,10 +31,25 @@ const tiktok = new TikTokManager({
     else feed({ icon: '🔴', text: 'Отключено от лайва' });
   },
   onEvent: (type, payload) => {
-    if (type !== 'gift') return; // урон наносят только подарки
-    handleGift(payload);
+    if (type === 'gift') return handleGift(payload);
+    if (type === 'like') return handleLike(payload);
+    // остальные события (chat/follow/share/member) урон не наносят
   },
 });
+
+// ── Лайки → урон ─────────────────────────────────────────────────────
+function handleLike(payload) {
+  const count = Math.max(1, payload.likeCount || 1);
+  handleGift({
+    userId: payload.userId || payload.user,
+    user: payload.user,
+    giftName: 'лайк',
+    flatBase: CFG.LIKE_DAMAGE,
+    repeatCount: count,
+    verb: `нанёс лайками (${count}) —`,
+    hitIcon: '❤️',
+  });
+}
 
 // ── Игровая логика → события ────────────────────────────────────────
 function handleGift(payload) {

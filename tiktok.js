@@ -75,7 +75,7 @@ class TikTokManager {
     });
 
     conn.on(WebcastEvent.LIKE, (d) => {
-      this.onEvent('like', { user: nick(d), likeCount: d.likeCount || 1 });
+      this.onEvent('like', { userId: uid(d), user: nick(d), likeCount: d.likeCount || 1 });
     });
 
     conn.on(WebcastEvent.FOLLOW, (d) => {

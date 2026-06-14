@@ -70,12 +70,13 @@ class BossBattle {
    * Возвращает массив событий для трансляции:
    *  { kind:'hit'|'crit'|'mvp'|'defeated', ... }
    */
-  applyGift({ userId, user, giftName, diamondCount = 1, repeatCount = 1 }) {
+  applyGift({ userId, user, giftName, diamondCount = 1, repeatCount = 1, flatBase = null, verb = 'нанёс', hitIcon = null }) {
     const events = [];
     // во время отсчёта до нового босса урон не проходит
     if (!this.boss.alive) return events;
 
-    const base = giftToDamage(giftName, diamondCount) * Math.max(1, repeatCount);
+    const unit = flatBase != null ? flatBase : giftToDamage(giftName, diamondCount);
+    const base = unit * Math.max(1, repeatCount);
 
     // крит
     let mult = 1;
@@ -95,11 +96,11 @@ class BossBattle {
 
     const feedText = critX
       ? `${user} нанёс КРИТ x${critX} — ${fmt(damage)} урона`
-      : `${user} нанёс ${fmt(damage)} урона`;
+      : `${user} ${verb} ${fmt(damage)} урона`;
     events.push({
       kind: 'hit',
       id: ++this.feedSeq,
-      icon: critX ? '💥' : pickHitIcon(damage),
+      icon: critX ? '💥' : (hitIcon || pickHitIcon(damage)),
       text: feedText,
       damage,
       critX,
