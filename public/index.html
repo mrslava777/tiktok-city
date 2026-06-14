@@ -1,131 +1,166 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#0a0a16" />
-  <title>⚔️ Boss vs Viewers</title>
-  <link rel="stylesheet" href="/style.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0b0712" />
+  <title>👑 King of Live</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="top">
-    <h1>⚔️ Boss <span class="sw">vs</span> Viewers</h1>
+  <!-- Шапка -->
+  <header class="topbar">
+    <h1>👑 King <span class="sw">of</span> Live</h1>
     <div id="status" class="status">офлайн</div>
-    <button id="soundBtn" class="gear" title="Звук">🔊</button>
-    <button id="gearBtn" class="gear" title="Настройки">⚙️</button>
-  </div>
+    <button id="soundBtn" class="iconbtn" title="Звук">🔊</button>
+    <button id="gearBtn" class="iconbtn" title="Настройки">⚙️</button>
+  </header>
 
-  <!-- MVP -->
-  <div id="mvp" class="mvp-banner empty">
-    <div class="crown">👑</div>
-    <div class="info">
-      <div class="lbl">MVP ИГРОК</div>
-      <div class="nm" id="mvpName">—</div>
-      <div class="sub" id="mvpSub">пока никто не атаковал</div>
-    </div>
-    <div class="streak" id="mvpStreak">x0</div>
-  </div>
+  <!-- Активное событие -->
+  <div id="eventBanner" class="event-banner"></div>
 
-  <!-- Урон за подарки -->
-  <div class="gift-legend" id="giftLegend">
-    <div class="gl-title">Урон</div>
-    <div class="gl-row">
-      <span class="gl-pill"><b>❤️ Лайк</b><i>−5</i></span>
-      <span class="gl-pill"><b>🌹 Rose</b><i>−10</i></span>
-      <span class="gl-pill"><b>🎁 Средние</b><i>−100</i></span>
-      <span class="gl-pill"><b>💎 Большие</b><i>−500</i></span>
-      <span class="gl-pill"><b>👑 Дорогие</b><i>−2000</i></span>
-      <span class="gl-pill sup"><b>🚀 Супер</b><i>−5000</i></span>
-    </div>
-  </div>
-
-  <!-- Босс -->
-  <div class="boss-stage" id="bossStage">
-    <div class="bgglow bg-fire" id="bossBg"></div>
-    <div class="pop-layer" id="popLayer"></div>
-    <div class="respawn-badge" id="respawn">
-      <div class="rn" id="respawnNum">15</div>
-      <div class="rl">НОВЫЙ БОСС ЧЕРЕЗ…</div>
-    </div>
-    <div class="stage-in">
-      <div class="boss-name" id="bossName">Босс</div>
-      <div class="boss-emoji" id="bossEmoji">🐲</div>
-      <div class="hpbar"><i id="hpFill" style="width:100%"></i><div class="hptext" id="hpText">—</div></div>
-      <div class="hp-meta">
-        <span id="hpNum">0 / 0</span>
-        <span class="pct" id="hpPct">100%</span>
+  <!-- Карточка Короля -->
+  <main class="wrap">
+    <section id="kingCard" class="king-card">
+      <div class="king-crown">👑 КОРОЛЬ</div>
+      <div id="kingAvatar" class="king-avatar">🪑</div>
+      <div id="kingName" class="king-name">Трон свободен</div>
+      <div class="throne-row">
+        <span class="throne-label">⏱️ На троне</span>
+        <span id="throneTime" class="throne-time">00:00</span>
       </div>
+      <div id="shieldTag" class="shield-tag">🛡️ Щит активен</div>
+
+      <!-- HP -->
+      <div class="hp-block">
+        <div class="hp-head">
+          <span>❤️ HP</span>
+          <span id="hpText">—</span>
+        </div>
+        <div class="hp-bar"><div id="hpFill" class="hp-fill"></div></div>
+      </div>
+
+      <!-- Награда за голову -->
+      <div class="bounty-block">
+        <div class="bounty-label">💰 НАГРАДА ЗА ГОЛОВУ</div>
+        <div id="bountyValue" class="bounty-value">—</div>
+      </div>
+
+      <div id="popLayer" class="pop-layer"></div>
+    </section>
+
+    <!-- Блок урона -->
+    <section class="legend">
+      <div class="lg-title">Урон</div>
+      <div class="lg-row">
+        <span class="lg-pill"><b>❤️ Лайк</b><i>−5</i></span>
+        <span class="lg-pill"><b>🌹 Rose</b><i>−10</i></span>
+        <span class="lg-pill"><b>💖 Heart</b><i>−50</i></span>
+        <span class="lg-pill"><b>🎵 TikTok</b><i>−100</i></span>
+        <span class="lg-pill"><b>🎁 Средние</b><i>−250</i></span>
+        <span class="lg-pill"><b>💎 Большие</b><i>−1000</i></span>
+        <span class="lg-pill sup"><b>🚀 Дорогие</b><i>−5000</i></span>
+      </div>
+    </section>
+
+    <!-- Топ охотников -->
+    <section class="panel">
+      <div class="panel-title">⚔️ Топ охотников <span class="muted">(за этот трон)</span></div>
+      <ol id="topHunters" class="rank"></ol>
+    </section>
+
+    <!-- Рекорды -->
+    <section class="panel records">
+      <div class="panel-title">🏆 Рекорды трона</div>
+      <div class="rec-grid">
+        <div class="rec"><span class="rec-cap">👑 Рекорд эфира</span><b id="recAll">—</b></div>
+        <div class="rec"><span class="rec-cap">📅 Лучший за день</span><b id="recDay">—</b></div>
+        <div class="rec"><span class="rec-cap">🗓️ Лучший за неделю</span><b id="recWeek">—</b></div>
+      </div>
+    </section>
+
+    <!-- Таблицы лидеров -->
+    <section class="panel">
+      <div class="tabs">
+        <button class="tab active" data-tab="kings">👑 Топ Королей</button>
+        <button class="tab" data-tab="killers">⚔️ Топ убийц</button>
+      </div>
+      <ol id="topKings" class="rank tabpane"></ol>
+      <ol id="topKillers" class="rank tabpane hidden"></ol>
+    </section>
+
+    <!-- Живая лента -->
+    <section class="panel">
+      <div class="panel-title">📜 Живая лента</div>
+      <ul id="feed" class="feed"></ul>
+    </section>
+  </main>
+
+  <!-- Док -->
+  <nav class="dock">
+    <button id="testBtn" class="dock-btn">🎲 Тест-подарок</button>
+    <button id="eventBtn" class="dock-btn">🎰 Событие</button>
+  </nav>
+
+  <!-- Полноэкранные оверлеи -->
+  <div id="fellOverlay" class="overlay fell">
+    <div class="ov-inner">
+      <div class="ov-emoji">⚔️</div>
+      <div class="ov-title">КОРОЛЬ ПАЛ</div>
+      <div class="ov-sub">Убийца</div>
+      <div id="fellKiller" class="ov-name">—</div>
+      <div class="ov-sub">Награда получена</div>
+      <div id="fellReward" class="ov-reward">—</div>
     </div>
   </div>
 
-  <!-- ТОП-10 -->
-  <div class="panel">
-    <div class="card-h">🏆 Топ-10 игроков</div>
-    <ul class="top-list" id="top"><li class="top-empty">Ещё никто не наносил урон — будь первым!</li></ul>
+  <div id="crownOverlay" class="overlay crown">
+    <div class="ov-inner">
+      <div class="ov-emoji">👑</div>
+      <div class="ov-title gold">НОВЫЙ КОРОЛЬ</div>
+      <div id="crownName" class="ov-name">—</div>
+    </div>
   </div>
 
-  <!-- Лента -->
-  <div class="panel">
-    <div class="card-h">📜 Живая лента событий</div>
-    <ul id="feed"></ul>
+  <div id="recordOverlay" class="overlay record">
+    <div class="ov-inner">
+      <div class="ov-emoji">🏆</div>
+      <div class="ov-title gold">НОВЫЙ РЕКОРД ТРОНА</div>
+      <div id="recordName" class="ov-name">—</div>
+      <div id="recordTime" class="ov-reward">—</div>
+    </div>
   </div>
 
-  <!-- Нижняя панель -->
-  <div class="dock">
-    <div class="settings" id="settings">
-      <div class="field">
-        <input id="username" type="text" placeholder="@username TikTok лайва" autocomplete="off" autocapitalize="off" spellcheck="false" />
-        <button id="connectBtn" class="primary" style="flex:0 0 auto;">Подключить</button>
+  <!-- Настройки -->
+  <div id="settings" class="settings">
+    <div class="settings-card">
+      <div class="settings-head">
+        <b>⚙️ Настройки</b>
+        <button id="closeGear" class="iconbtn">✕</button>
       </div>
+      <label class="fld">
+        <span>TikTok @username эфира</span>
+        <input id="usernameInput" type="text" placeholder="например: kate_troyanovskaya" />
+      </label>
       <div class="btn-row">
-        <button id="simBtn" class="ghost">🎲 Тест-удар</button>
-        <button id="resetBtn" class="ghost">🔄 Сброс</button>
+        <button id="connectBtn" class="btn primary">🔌 Подключить</button>
+        <button id="disconnectBtn" class="btn">⛔ Отключить</button>
       </div>
-      <div class="err" id="err"></div>
-    </div>
-    <div class="dock-bar">
-      <button id="hallBtn" class="gold">🏛️ Зал Славы</button>
-      <button id="simBtn2" class="ghost">🎲 Тест-удар</button>
-    </div>
-  </div>
-
-  <!-- Оверлей: новый MVP -->
-  <div class="overlay" id="mvpOverlay">
-    <div class="mvp-pop">
-      <div class="c">👑</div>
-      <div class="t">НОВЫЙ MVP</div>
-      <div class="n" id="mvpOverlayName">—</div>
-    </div>
-  </div>
-
-  <!-- Оверлей: победа -->
-  <div class="overlay" id="victoryOverlay">
-    <div class="victory">
-      <div class="boom">💥</div>
-      <div class="vt">🏆 БОСС ПОВЕРЖЕН</div>
-      <div class="row killer">
-        <div class="k">⚔️ ПОСЛЕДНИЙ УДАР — УБИЙЦА БОССА</div>
-        <div class="v" id="vKiller">—</div>
+      <div id="connMsg" class="conn-msg"></div>
+      <div class="sep"></div>
+      <div class="muted small">Тест без эфира:</div>
+      <div class="btn-grid">
+        <button class="btn" data-effect="shield">🛡️ Щит</button>
+        <button class="btn" data-effect="berserk">⚡ Берсерк</button>
+        <button class="btn" data-effect="heal">💚 Лечение</button>
+        <button class="btn" id="healSelfBtn">👑 Король лечится</button>
       </div>
-      <div class="row mvpr">
-        <div class="k">👑 MVP БИТВЫ</div>
-        <div class="v" id="vMvp">—</div>
-      </div>
-      <div class="count">Боссов повержено: <b id="vCount">0</b></div>
-    </div>
-  </div>
-
-  <!-- Оверлей: Зал Славы -->
-  <div class="overlay" id="hallOverlay">
-    <div class="hall">
-      <h2>🏛️ Зал Славы</h2>
-      <div class="sub">Последние 50 убийц боссов</div>
-      <ul id="hallList"><li class="hall-empty">Пока никто не повержен. Стань первым героем!</li></ul>
-      <button class="close ghost" id="hallClose">Закрыть</button>
+      <div class="sep"></div>
+      <button id="resetBtn" class="btn danger">🔄 Сбросить игру</button>
     </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

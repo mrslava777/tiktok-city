@@ -3,261 +3,397 @@
 const CFG = require('./config');
 
 /**
- * Движок боя «Boss vs Viewers».
- * Хранит босса, игроков, MVP с серией, Зал Славы. Всё в памяти.
+ * Игровая логика «King of Live».
+ * Один Король на эфире. Охотники сбивают его подарками. Кто нанёс
+ * последний удар — становится новым Королём. Награда за голову растёт
+ * со временем. Всё хранится в памяти (без базы данных).
  */
-class BossBattle {
+class KingOfLive {
   constructor() {
-    this.reset();
+    this.reset(true);
   }
 
-  reset() {
-    this.players = new Map(); // id -> { id, name, total, boss }
-    this.hallOfFame = [];     // последние убийцы боссов
-    this.killCount = 0;
+  reset(full = false) {
+    this.king = null;                 // текущий Король (или null — трон свободен)
     this.feedSeq = 0;
-    this.currentMvpId = null;
-    this.mvpStreak = 0;
-    this.respawnAt = null;    // timestamp, когда появится новый босс
-    this.lastBossIndex = -1;
-    this._spawnBoss();
-  }
-
-  // ── БОСС ────────────────────────────────────────────────────────────
-  _spawnBoss() {
-    const pool = CFG.BOSSES;
-    let idx = Math.floor(Math.random() * pool.length);
-    if (pool.length > 1 && idx === this.lastBossIndex) idx = (idx + 1) % pool.length;
-    this.lastBossIndex = idx;
-    const def = pool[idx];
-    const maxHp = CFG.BOSS_HP_POOL[Math.floor(Math.random() * CFG.BOSS_HP_POOL.length)];
-    this.boss = {
-      name: def.name,
-      emoji: def.emoji,
-      bg: def.bg,
-      maxHp,
-      hp: maxHp,
-      alive: true,
-      bornAt: Date.now(),
+    this.effects = {                  // активные модификаторы
+      dmgMult: 1, dmgMultUntil: 0,    // Восстание / Час охоты
+      bountyMult: 1, bountyMultUntil: 0, // Двойная награда
     };
-    // статистика урона по боссу обнуляется для всех игроков
-    for (const p of this.players.values()) p.boss = 0;
-    this.currentMvpId = null;
-    this.mvpStreak = 0;
-    this.respawnAt = null;
-  }
-
-  // ── ИГРОКИ / УРОВНИ ────────────────────────────────────────────────
-  _player(id, name) {
-    let p = this.players.get(id);
-    if (!p) {
-      p = { id, name: name || 'Зритель', total: 0, boss: 0 };
-      this.players.set(id, p);
-    } else if (name) {
-      p.name = name;
+    if (full) {
+      this.kingsBoard = new Map();    // id → { name, bestSeconds }  (ТОП Королей)
+      this.killers = new Map();       // id → { name, kills, points } (ТОП убийц)
+      this.records = {
+        allTime: null,                // { name, seconds }
+        day: null,                    // { name, seconds, key }
+        week: null,                   // { name, seconds, key }
+      };
+      this.totalReigns = 0;
     }
-    return p;
   }
 
-  levelOf(total) {
-    let title = CFG.LEVELS[0].title;
-    for (const lv of CFG.LEVELS) if (total >= lv.min) title = lv.title;
-    return title;
-  }
-
-  // ── ОСНОВНОЕ: УДАР ПОДАРКОМ ────────────────────────────────────────
-  /**
-   * Возвращает массив событий для трансляции:
-   *  { kind:'hit'|'crit'|'mvp'|'defeated', ... }
-   */
-  applyGift({ userId, user, giftName, diamondCount = 1, repeatCount = 1, flatBase = null, verb = 'нанёс', hitIcon = null }) {
+  // ── Главный обработчик подарка/лайка ──────────────────────────────
+  // Возвращает массив событий для трансляции клиентам.
+  applyGift({ userId, user, giftName, diamondCount = 1, repeatCount = 1, flatBase = null, isLike = false }) {
     const events = [];
-    // во время отсчёта до нового босса урон не проходит
-    if (!this.boss.alive) return events;
+    const id = userId || user || 'anon';
+    const name = user || 'Зритель';
+    const now = Date.now();
+
+    // ── Трон свободен → первый подарок коронует (лайки не коронуют) ──
+    if (!this.king) {
+      if (isLike) return events;
+      this._crown(id, name, now);
+      events.push({
+        kind: 'crown',
+        id: ++this.feedSeq,
+        icon: '👑',
+        text: `${name} захватил трон и стал КОРОЛЁМ`,
+        name,
+        first: true,
+      });
+      return events;
+    }
+
+    // ── Король дарит сам себе → лечение (защита) ──────────────────────
+    if (id === this.king.id && !isLike) {
+      const heal = healAmount(giftName, diamondCount) * Math.max(1, repeatCount);
+      const before = this.king.hp;
+      this.king.hp = Math.min(this.king.maxHp, this.king.hp + heal);
+      const gained = this.king.hp - before;
+      events.push({
+        kind: 'heal',
+        id: ++this.feedSeq,
+        icon: '💚',
+        text: `Король восстановил +${fmt(gained)} HP`,
+        hp: this.king.hp,
+        hpPercent: this.percent(),
+      });
+      return events;
+    }
+    // Король лайкает сам себя — игнорируем
+    if (id === this.king.id && isLike) return events;
+
+    // ── Охотник атакует Короля ───────────────────────────────────────
+    // щит — иммунитет
+    if (this.king.shieldUntil && now < this.king.shieldUntil) {
+      events.push({
+        kind: 'blocked',
+        id: ++this.feedSeq,
+        icon: '🛡️',
+        text: `🛡️ Щит Короля поглотил удар от ${name}`,
+        hpPercent: this.percent(),
+      });
+      return events;
+    }
 
     const unit = flatBase != null ? flatBase : giftToDamage(giftName, diamondCount);
-    const base = unit * Math.max(1, repeatCount);
+    let base = unit * Math.max(1, repeatCount);
+    // множитель активного события (Восстание / Час охоты)
+    const dmgMult = now < this.effects.dmgMultUntil ? this.effects.dmgMult : 1;
+    base *= dmgMult;
 
     // крит
-    let mult = 1;
     let critX = 0;
     if (Math.random() < CFG.CRIT.chance) {
       critX = Math.random() < CFG.CRIT.x5Chance ? 5 : 2;
-      mult = critX;
     }
-    const damage = Math.round(base * mult);
-    const dealt = Math.min(damage, this.boss.hp);
+    const damage = Math.round(base * (critX || 1));
+    const dealt = Math.min(damage, this.king.hp);
+    this.king.hp -= dealt;
 
-    const id = userId || user || 'anon';
-    const p = this._player(id, user);
-    p.total += dealt;
-    p.boss += dealt;
-    this.boss.hp -= dealt;
+    // учёт урона охотника по текущему Королю
+    const h = this.king.hunters.get(id) || { name, dmg: 0 };
+    h.name = name;
+    h.dmg += dealt;
+    this.king.hunters.set(id, h);
 
-    const feedText = critX
-      ? `${user} нанёс КРИТ x${critX} — ${fmt(damage)} урона`
-      : `${user} ${verb} ${fmt(damage)} урона`;
+    const verb = isLike ? `${name} лайками (${repeatCount})` : name;
+    const hitText = critX
+      ? `${verb} — КРИТ x${critX} — ${fmt(damage)} урона`
+      : `${verb} нанёс ${fmt(damage)} урона`;
     events.push({
       kind: 'hit',
       id: ++this.feedSeq,
-      icon: critX ? '💥' : (hitIcon || pickHitIcon(damage)),
-      text: feedText,
+      icon: critX ? '💥' : (isLike ? '❤️' : pickHitIcon(damage)),
+      text: hitText,
       damage,
       critX,
       hpPercent: this.percent(),
     });
 
-    // смена MVP?
-    const mvpChanged = this._recomputeMvp();
-    if (mvpChanged && this.currentMvpId) {
-      const mvp = this.players.get(this.currentMvpId);
+    // ── Король пал ───────────────────────────────────────────────────
+    if (this.king.hp <= 0) {
+      const fallen = this.king;
+      const reignSeconds = Math.floor((now - fallen.throneStart) / 1000);
+      const reward = this._bountyValue();
+
+      // очки и убийство — нанёсшему последний удар
+      const k = this.killers.get(id) || { name, kills: 0, points: 0 };
+      k.name = name;
+      k.kills += 1;
+      k.points += reward;
+      this.killers.set(id, k);
+
+      // обновляем рекорды и таблицу Королей по времени павшего
+      const recBroken = this._registerReign(fallen.id, fallen.name, reignSeconds, now);
+      this.totalReigns += 1;
+
       events.push({
-        kind: 'mvp',
+        kind: 'fell',
+        id: ++this.feedSeq,
+        icon: '⚔️',
+        text: `${name} убил Короля ${fallen.name} (${clock(reignSeconds)}) и получил ${fmt(reward)} очков`,
+        fallenName: fallen.name,
+        killer: name,
+        reward,
+        reignSeconds,
+        recordBroken: recBroken,
+      });
+
+      if (recBroken) {
+        events.push({
+          kind: 'record',
+          id: ++this.feedSeq,
+          icon: '🏆',
+          text: `🏆 Новый рекорд трона: ${fallen.name} — ${clock(reignSeconds)}`,
+          name: fallen.name,
+          seconds: reignSeconds,
+        });
+      }
+
+      // последний бивший становится новым Королём
+      this._crown(id, name, now);
+      events.push({
+        kind: 'crown',
         id: ++this.feedSeq,
         icon: '👑',
-        text: `${mvp.name} стал новым MVP`,
-        name: mvp.name,
-      });
-    }
-
-    // босс повержен?
-    if (this.boss.hp <= 0) {
-      this.boss.hp = 0;
-      this.boss.alive = false;
-      this.killCount += 1;
-      this.respawnAt = Date.now() + CFG.RESPAWN_SECONDS * 1000;
-
-      const mvp = this.currentMvpId ? this.players.get(this.currentMvpId) : p;
-      const record = {
-        player: p.name,
-        boss: this.boss.name,
-        damage: p.boss,
-        mvp: mvp ? mvp.name : p.name,
-        time: Date.now(),
-      };
-      this.hallOfFame.unshift(record);
-      if (this.hallOfFame.length > CFG.HALL_OF_FAME_LIMIT) this.hallOfFame.pop();
-
-      events.push({
-        kind: 'defeated',
-        id: ++this.feedSeq,
-        icon: '🏆',
-        text: `${p.name} нанёс последний удар! ${this.boss.name} повержен`,
-        killer: p.name,
-        boss: this.boss.name,
-        mvp: mvp ? mvp.name : p.name,
-        respawnSeconds: CFG.RESPAWN_SECONDS,
+        text: `${name} взошёл на трон — новый КОРОЛЬ!`,
+        name,
+        first: false,
       });
     }
 
     return events;
   }
 
-  // пересчёт MVP по урону текущему боссу. true, если лидер сменился
-  _recomputeMvp() {
-    let leader = null;
-    for (const p of this.players.values()) {
-      if (p.boss <= 0) continue;
-      if (!leader || p.boss > leader.boss) leader = p;
-    }
-    const newId = leader ? leader.id : null;
-    if (newId && newId !== this.currentMvpId) {
-      this.currentMvpId = newId;
-      this.mvpStreak = 1;
-      return true;
-    }
-    return false;
-  }
-
-  // вызывается раз в минуту: если MVP держится — серия растёт
-  tickMvpStreak() {
-    if (this.currentMvpId && this.boss.alive) {
-      this.mvpStreak += 1;
-      return this.mvpStreak;
-    }
-    return 0;
-  }
-
-  // проверка таймера возрождения. Возвращает нового босса, если появился
-  tickRespawn() {
-    if (!this.boss.alive && this.respawnAt && Date.now() >= this.respawnAt) {
-      this._spawnBoss();
-      return this.boss;
-    }
-    return null;
-  }
-
-  // ── СНИМОК СОСТОЯНИЯ ДЛЯ ИНТЕРФЕЙСА ────────────────────────────────
-  percent() {
-    return this.boss.maxHp ? Math.max(0, (this.boss.hp / this.boss.maxHp) * 100) : 0;
-  }
-
-  top(n = CFG.TOP_N) {
-    const arr = [...this.players.values()]
-      .filter((p) => p.boss > 0)
-      .sort((a, b) => b.boss - a.boss)
-      .slice(0, n);
-    return arr.map((p, i) => ({
-      rank: i + 1,
-      name: p.name,
-      damage: p.boss,
-      level: this.levelOf(p.total),
-      isMvp: p.id === this.currentMvpId,
-    }));
-  }
-
-  mvp() {
-    if (!this.currentMvpId) return null;
-    const p = this.players.get(this.currentMvpId);
-    if (!p) return null;
-    return {
-      name: p.name,
-      damage: p.boss,
-      total: p.total,
-      streak: this.mvpStreak,
-      level: this.levelOf(p.total),
+  // ── Коронация ─────────────────────────────────────────────────────
+  _crown(id, name, now) {
+    this.king = {
+      id,
+      name,
+      hp: CFG.KING_HP,
+      maxHp: CFG.KING_HP,
+      throneStart: now,
+      bountySeconds: 0,     // «возраст» для расчёта награды (растёт быстрее на событии)
+      shieldUntil: 0,
+      hunters: new Map(),   // id → { name, dmg } по текущему правлению
     };
+    // сбрасываем боевые эффекты при смене Короля
+    this.effects.dmgMult = 1; this.effects.dmgMultUntil = 0;
+    this.effects.bountyMult = 1; this.effects.bountyMultUntil = 0;
   }
 
-  respawnLeft() {
-    if (this.boss.alive || !this.respawnAt) return 0;
-    return Math.max(0, Math.ceil((this.respawnAt - Date.now()) / 1000));
+  // ── Тик раз в секунду: рост награды и истечение эффектов ───────────
+  tick() {
+    const now = Date.now();
+    if (this.king) {
+      const bMult = now < this.effects.bountyMultUntil ? this.effects.bountyMult : 1;
+      this.king.bountySeconds += bMult;
+    }
+    // истечение эффектов фиксируется при чтении (по времени) — отдельно чистить не нужно
+    return now;
   }
 
-  snapshot(status = {}) {
-    return {
-      status,
-      boss: {
-        name: this.boss.name,
-        emoji: this.boss.emoji,
-        bg: this.boss.bg,
-        hp: Math.round(this.boss.hp),
-        maxHp: this.boss.maxHp,
-        percent: this.percent(),
-        alive: this.boss.alive,
+  // ── Случайное событие трона ───────────────────────────────────────
+  // Возвращает событие для ленты/баннера или null.
+  triggerRandomEvent() {
+    if (!this.king) return null;
+    const now = Date.now();
+    const pool = [
+      {
+        key: 'uprising', icon: '🔥', title: 'ВОССТАНИЕ',
+        text: '🔥 Восстание! Урон по Королю x2',
+        apply: () => { this.effects.dmgMult = CFG.EVENT_DMG_MULT; this.effects.dmgMultUntil = now + CFG.EVENT_DMG_MS; },
+        durationMs: CFG.EVENT_DMG_MS,
       },
-      mvp: this.mvp(),
-      top: this.top(),
-      respawn: { active: !this.boss.alive, secondsLeft: this.respawnLeft() },
-      killCount: this.killCount,
-      players: this.players.size,
+      {
+        key: 'guard', icon: '🛡️', title: 'КОРОЛЕВСКАЯ СТРАЖА',
+        text: '🛡️ Королевская стража! Король под щитом',
+        apply: () => { this.king.shieldUntil = now + CFG.SHIELD_MS; },
+        durationMs: CFG.SHIELD_MS,
+      },
+      {
+        key: 'double', icon: '💰', title: 'ДВОЙНАЯ НАГРАДА',
+        text: '💰 Двойная награда! Цена за голову растёт быстрее',
+        apply: () => { this.effects.bountyMult = CFG.EVENT_DOUBLE_BOUNTY_MULT; this.effects.bountyMultUntil = now + CFG.EVENT_DOUBLE_BOUNTY_MS; },
+        durationMs: CFG.EVENT_DOUBLE_BOUNTY_MS,
+      },
+      {
+        key: 'hunt', icon: '⚔️', title: 'ЧАС ОХОТЫ',
+        text: '⚔️ Час охоты! Все атаки усилены x2',
+        apply: () => { this.effects.dmgMult = CFG.EVENT_DMG_MULT; this.effects.dmgMultUntil = now + CFG.EVENT_DMG_MS; },
+        durationMs: CFG.EVENT_DMG_MS,
+      },
+    ];
+    const ev = pool[Math.floor(Math.random() * pool.length)];
+    ev.apply();
+    return {
+      kind: 'event', key: ev.key, icon: ev.icon, title: ev.title,
+      text: ev.text, durationMs: ev.durationMs,
+      id: ++this.feedSeq,
     };
   }
 
-  hall() {
-    return this.hallOfFame.map((r) => ({
-      player: r.player,
-      boss: r.boss,
-      damage: r.damage,
-      time: r.time,
-    }));
+  // ── Ручные спец-эффекты (для теста/механики) ──────────────────────
+  activateShield() {
+    if (!this.king) return null;
+    this.king.shieldUntil = Date.now() + CFG.SHIELD_MS;
+    return { kind: 'event', key: 'shield', icon: '🛡️', title: 'ЩИТ',
+      text: '🛡️ Король активировал щит', durationMs: CFG.SHIELD_MS, id: ++this.feedSeq };
+  }
+  activateBerserk() {
+    if (!this.king) return null;
+    this.effects.dmgMult = CFG.BERSERK_MULT;
+    this.effects.dmgMultUntil = Date.now() + CFG.BERSERK_MS;
+    return { kind: 'event', key: 'berserk', icon: '⚡', title: 'БЕРСЕРК',
+      text: `⚡ Берсерк! Урон охотников x${CFG.BERSERK_MULT}`, durationMs: CFG.BERSERK_MS, id: ++this.feedSeq };
+  }
+  activateHeal() {
+    if (!this.king) return null;
+    const before = this.king.hp;
+    this.king.hp = Math.min(this.king.maxHp, this.king.hp + this.king.maxHp * CFG.HEAL_PERCENT);
+    const gained = Math.round(this.king.hp - before);
+    return { kind: 'event', key: 'heal', icon: '💚', title: 'ЛЕЧЕНИЕ',
+      text: `💚 Король вылечился на +${fmt(gained)} HP`, durationMs: 0, id: ++this.feedSeq,
+      hpPercent: this.percent() };
+  }
+
+  // ── Рекорды и таблица Королей ─────────────────────────────────────
+  _registerReign(id, name, seconds, now) {
+    // персональный рекорд для ТОП Королей
+    const b = this.kingsBoard.get(id) || { name, bestSeconds: 0 };
+    b.name = name;
+    if (seconds > b.bestSeconds) b.bestSeconds = seconds;
+    this.kingsBoard.set(id, b);
+
+    let broken = false;
+    // рекорд за всё время
+    if (!this.records.allTime || seconds > this.records.allTime.seconds) {
+      this.records.allTime = { name, seconds };
+      broken = true;
+    }
+    // рекорд дня
+    const dayKey = dayKeyOf(now);
+    if (!this.records.day || this.records.day.key !== dayKey || seconds > this.records.day.seconds) {
+      if (!this.records.day || this.records.day.key !== dayKey) this.records.day = { name, seconds, key: dayKey };
+      else if (seconds > this.records.day.seconds) this.records.day = { name, seconds, key: dayKey };
+    }
+    // рекорд недели
+    const weekKey = weekKeyOf(now);
+    if (!this.records.week || this.records.week.key !== weekKey || seconds > this.records.week.seconds) {
+      if (!this.records.week || this.records.week.key !== weekKey) this.records.week = { name, seconds, key: weekKey };
+      else if (seconds > this.records.week.seconds) this.records.week = { name, seconds, key: weekKey };
+    }
+    return broken;
+  }
+
+  // ── Награда за голову (по «возрасту» правления) ───────────────────
+  _bountyValue() {
+    if (!this.king) return 0;
+    const s = this.king.bountySeconds;
+    const sch = CFG.BOUNTY_SCHEDULE;
+    if (s <= sch[0][0]) return sch[0][1];
+    for (let i = 1; i < sch.length; i++) {
+      if (s <= sch[i][0]) {
+        const [t0, v0] = sch[i - 1];
+        const [t1, v1] = sch[i];
+        const ratio = (s - t0) / (t1 - t0);
+        return Math.round(v0 + (v1 - v0) * ratio);
+      }
+    }
+    // за пределами расписания — продолжаем расти по последнему наклону
+    const [t0, v0] = sch[sch.length - 2];
+    const [t1, v1] = sch[sch.length - 1];
+    const slope = (v1 - v0) / (t1 - t0);
+    return Math.round(v1 + slope * (s - t1));
+  }
+
+  percent() {
+    if (!this.king) return 0;
+    return Math.max(0, Math.round((this.king.hp / this.king.maxHp) * 100));
+  }
+
+  topHunters(n = 5) {
+    if (!this.king) return [];
+    return [...this.king.hunters.values()]
+      .sort((a, b) => b.dmg - a.dmg)
+      .slice(0, n)
+      .map((h) => ({ name: h.name, dmg: h.dmg }));
+  }
+
+  topKings(n = 10) {
+    return [...this.kingsBoard.values()]
+      .filter((k) => k.bestSeconds > 0)
+      .sort((a, b) => b.bestSeconds - a.bestSeconds)
+      .slice(0, n)
+      .map((k) => ({ name: k.name, seconds: k.bestSeconds }));
+  }
+
+  topKillers(n = 10) {
+    return [...this.killers.values()]
+      .sort((a, b) => b.kills - a.kills || b.points - a.points)
+      .slice(0, n)
+      .map((k) => ({ name: k.name, kills: k.kills, points: k.points }));
+  }
+
+  // ── Снимок состояния для клиента ──────────────────────────────────
+  snapshot(status) {
+    const now = Date.now();
+    const king = this.king
+      ? {
+          id: this.king.id,
+          name: this.king.name,
+          hp: Math.max(0, Math.round(this.king.hp)),
+          maxHp: this.king.maxHp,
+          hpPercent: this.percent(),
+          bounty: this._bountyValue(),
+          throneSeconds: Math.floor((now - this.king.throneStart) / 1000),
+          shield: !!(this.king.shieldUntil && now < this.king.shieldUntil),
+          shieldLeft: this.king.shieldUntil ? Math.max(0, Math.ceil((this.king.shieldUntil - now) / 1000)) : 0,
+        }
+      : null;
+
+    const dmgBoost = now < this.effects.dmgMultUntil;
+    const doubleBounty = now < this.effects.bountyMultUntil;
+
+    return {
+      status: status || { connected: false, username: null },
+      hasKing: !!this.king,
+      king,
+      effects: {
+        dmgBoost,
+        dmgMult: dmgBoost ? this.effects.dmgMult : 1,
+        doubleBounty,
+        shield: king ? king.shield : false,
+      },
+      topHunters: this.topHunters(5),
+      topKings: this.topKings(10),
+      topKillers: this.topKillers(10),
+      records: {
+        allTime: this.records.allTime,
+        day: this.records.day ? { name: this.records.day.name, seconds: this.records.day.seconds } : null,
+        week: this.records.week ? { name: this.records.week.name, seconds: this.records.week.seconds } : null,
+      },
+      totalReigns: this.totalReigns,
+    };
   }
 }
 
-// ── ХЕЛПЕРЫ ──────────────────────────────────────────────────────────
+// ── Хелперы урона/лечения ───────────────────────────────────────────
 function giftToDamage(giftName, diamondCount) {
-  const key = String(giftName || '').trim().toLowerCase();
-  if (key && CFG.GIFT_DAMAGE.byName[key] != null) return CFG.GIFT_DAMAGE.byName[key];
+  const key = String(giftName || '').toLowerCase().trim();
+  if (CFG.GIFT_DAMAGE.byName[key] != null) return CFG.GIFT_DAMAGE.byName[key];
   const d = Number(diamondCount) || 1;
   for (const tier of CFG.GIFT_DAMAGE.byDiamondTier) {
     if (d <= tier.maxDiamonds) return tier.damage;
@@ -265,16 +401,43 @@ function giftToDamage(giftName, diamondCount) {
   return CFG.GIFT_DAMAGE.default;
 }
 
+function healAmount(giftName, diamondCount) {
+  const d = Number(diamondCount) || 1;
+  for (const tier of CFG.HEAL_BY_TIER) {
+    if (d <= tier.maxDiamonds) return tier.hp;
+  }
+  return CFG.HEAL_BY_TIER[CFG.HEAL_BY_TIER.length - 1].hp;
+}
+
 function pickHitIcon(damage) {
-  if (damage >= 2000) return '🚀';
-  if (damage >= 500) return '💣';
-  if (damage >= 100) return '⚔️';
-  if (damage >= 25) return '🔥';
+  if (damage >= 5000) return '🚀';
+  if (damage >= 1000) return '💣';
+  if (damage >= 250) return '⚔️';
+  if (damage >= 50) return '🔥';
   return '🌹';
 }
 
 function fmt(n) {
-  return Number(n).toLocaleString('ru-RU');
+  return Math.round(n).toLocaleString('ru-RU');
 }
 
-module.exports = { BossBattle, giftToDamage };
+function clock(totalSeconds) {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+function dayKeyOf(ts) {
+  const d = new Date(ts);
+  return `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
+}
+
+function weekKeyOf(ts) {
+  const d = new Date(ts);
+  const onejan = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((d - onejan) / 86400000) + onejan.getUTCDay() + 1) / 7);
+  return `${d.getUTCFullYear()}-W${week}`;
+}
+
+module.exports = { KingOfLive, giftToDamage, healAmount, clock };
