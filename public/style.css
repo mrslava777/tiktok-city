@@ -144,6 +144,16 @@ body {
 }
 
 /* ── Блок урона ── */
+.rule-card {
+  display: flex; align-items: center; gap: 10px;
+  background: linear-gradient(135deg, rgba(255,196,0,.12), rgba(150,80,255,.10));
+  border: 1px solid var(--gold); border-radius: 14px;
+  padding: 11px 13px; margin-bottom: 12px;
+}
+.rule-ico { font-size: 22px; line-height: 1; flex-shrink: 0; }
+.rule-text { font-size: 13px; line-height: 1.35; color: var(--text); }
+.rule-text b { color: var(--gold); }
+
 .legend {
   background: var(--card); border: 1px solid var(--line);
   border-radius: 16px; padding: 12px;
