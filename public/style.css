@@ -44,7 +44,7 @@ body {
   color: var(--txt);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   min-height: 100vh;
-  padding-bottom: 86px;
+  padding-bottom: 28px;
 }
 
 /* ── Шапка ── */
@@ -275,20 +275,6 @@ body {
 .feed li.shield { border-left: 3px solid var(--blue); }
 .feed li.event { background: linear-gradient(90deg, rgba(176,107,255,.18), var(--card2)); border-left: 3px solid var(--purple); }
 @keyframes fadein { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; } }
-
-/* ── Док ── */
-.dock {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
-  display: flex; gap: 10px; padding: 12px 14px;
-  background: linear-gradient(0deg, rgba(11,7,18,.98), rgba(11,7,18,.7));
-  border-top: 1px solid var(--line);
-}
-.dock-btn {
-  flex: 1; border: 1px solid var(--line); background: var(--card2);
-  color: var(--txt); font-weight: 800; font-size: 15px;
-  padding: 13px; border-radius: 14px; cursor: pointer;
-}
-.dock-btn:active { transform: scale(.97); }
 
 /* ── Оверлеи ── */
 .overlay {
