@@ -17,6 +17,28 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; padding: 0; }
+
+/* ── Фоновая анимация (искры/угольки) ── */
+.fx-layer {
+  position: fixed; inset: 0; z-index: 0;
+  pointer-events: none; overflow: hidden;
+}
+.fx-dot {
+  position: absolute; bottom: -24px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, var(--gold), rgba(255,176,46,.15) 70%, transparent 72%);
+  opacity: 0; will-change: transform, opacity;
+  animation: fxRise linear forwards;
+}
+.fx-dot.purple { background: radial-gradient(circle at 50% 40%, var(--purple), rgba(176,107,255,.12) 70%, transparent 72%); }
+@keyframes fxRise {
+  0%   { transform: translateY(0) translateX(0) scale(.6); opacity: 0; }
+  12%  { opacity: .9; }
+  85%  { opacity: .75; }
+  100% { transform: translateY(-112vh) translateX(var(--dx, 0)) scale(1.05); opacity: 0; }
+}
+/* контент над фоном */
+.wrap, .event-banner { position: relative; z-index: 1; }
 body {
   background: radial-gradient(120% 80% at 50% -10%, #2a1550 0%, var(--bg) 55%);
   color: var(--txt);
@@ -81,14 +103,53 @@ body {
   background: radial-gradient(60% 100% at 50% 0%, rgba(255,211,77,.18), transparent 70%);
   pointer-events: none;
 }
-.king-crown { font-size: 13px; font-weight: 900; letter-spacing: 2px; color: var(--gold); }
+.king-crown { font-size: 13px; font-weight: 900; letter-spacing: 2px; color: var(--gold); animation: crownGlow 2.6s ease-in-out infinite; }
+@keyframes crownGlow {
+  0%,100% { text-shadow: 0 0 6px rgba(255,211,77,.35); }
+  50% { text-shadow: 0 0 16px rgba(255,211,77,.85); }
+}
+
+/* сцена короля: аватар + орбита охотников */
+.king-stage { position: relative; width: 150px; height: 150px; margin: 8px auto 4px; }
 .king-avatar {
-  width: 104px; height: 104px; margin: 10px auto 6px;
+  position: absolute; left: 50%; top: 50%;
+  width: 104px; height: 104px;
   border-radius: 50%; display: flex; align-items: center; justify-content: center;
   font-size: 54px; background: radial-gradient(circle at 50% 35%, #3a2360, #1c1030);
   border: 3px solid var(--gold); box-shadow: 0 0 30px rgba(255,211,77,.4);
-  transition: transform .08s;
+  transform: translate(-50%, -50%);
+  animation: kingFloat 3.4s ease-in-out infinite;
 }
+@keyframes kingFloat {
+  0%,100% { transform: translate(-50%, -50%) translateY(0); }
+  50%     { transform: translate(-50%, -50%) translateY(-7px); }
+}
+/* вращающееся свечение-ореол за аватаром */
+.king-stage::before {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 132px; height: 132px; transform: translate(-50%, -50%);
+  border-radius: 50%; pointer-events: none; z-index: -1;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(255,211,77,.45) 60deg, transparent 130deg, rgba(176,107,255,.4) 220deg, transparent 300deg);
+  filter: blur(6px); animation: auraSpin 6s linear infinite;
+}
+@keyframes auraSpin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+/* орбита охотников вокруг короля */
+.orbit {
+  position: absolute; left: 50%; top: 50%;
+  width: 150px; height: 150px; transform: translate(-50%, -50%);
+  animation: auraSpin 9s linear infinite; pointer-events: none;
+}
+.orbit span {
+  position: absolute; left: 50%; top: 50%; font-size: 18px;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,.5));
+}
+.orbit span:nth-child(1) { transform: translate(-50%, -50%) translateY(-74px); }
+.orbit span:nth-child(2) { transform: translate(-50%, -50%) rotate(120deg) translateY(-74px); }
+.orbit span:nth-child(3) { transform: translate(-50%, -50%) rotate(240deg) translateY(-74px); }
+.king-card:not(.has-king) .orbit { opacity: 0; }
+.king-card:not(.has-king) .king-avatar { animation-play-state: paused; }
+
 .king-card.shake .king-avatar { animation: shake .28s; }
 @keyframes shake {
   0%,100% { transform: translateX(0); }

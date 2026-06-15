@@ -8,6 +8,9 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- Фоновая анимация (искры/угольки) -->
+  <div id="fxLayer" class="fx-layer" aria-hidden="true"></div>
+
   <!-- Шапка -->
   <header class="topbar">
     <h1>👑 King <span class="sw">of</span> Live</h1>
@@ -23,7 +26,12 @@
   <main class="wrap">
     <section id="kingCard" class="king-card">
       <div class="king-crown">👑 КОРОЛЬ</div>
-      <div id="kingAvatar" class="king-avatar">🪑</div>
+      <div class="king-stage">
+        <div class="orbit">
+          <span>⚔️</span><span>🏹</span><span>🗡️</span>
+        </div>
+        <div id="kingAvatar" class="king-avatar">🪑</div>
+      </div>
       <div id="kingName" class="king-name">Трон свободен</div>
       <div class="throne-row">
         <span class="throne-label">⏱️ На троне</span>

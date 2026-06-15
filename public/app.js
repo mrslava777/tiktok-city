@@ -87,6 +87,7 @@ function render(st) {
     $('hpText').textContent = `${fmt(k.hp)} / ${fmt(k.maxHp)}`;
     $('hpFill').style.width = Math.max(0, k.hpPercent) + '%';
     $('bountyValue').textContent = fmt(k.bounty);
+    card.classList.add('has-king');
     card.classList.toggle('shielded', !!k.shield);
     $('shieldTag').classList.toggle('show', !!k.shield);
   } else {
@@ -96,6 +97,7 @@ function render(st) {
     $('hpText').textContent = '—';
     $('hpFill').style.width = '0%';
     $('bountyValue').textContent = fmt(st.king ? st.king.bounty : 1000);
+    card.classList.remove('has-king');
     card.classList.remove('shielded');
     $('shieldTag').classList.remove('show');
   }
@@ -281,3 +283,33 @@ document.querySelectorAll('.tab').forEach((tab) =>
     $('topKings').classList.toggle('hidden', which !== 'kings');
     $('topKillers').classList.toggle('hidden', which !== 'killers');
   });
+
+// ── Фоновая анимация: непрерывные искры/угольки ─────────────────────
+(function ambientFX() {
+  const layer = document.getElementById('fxLayer');
+  if (!layer) return;
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce) return;
+
+  function spawn() {
+    const d = document.createElement('div');
+    const purple = Math.random() < 0.4;
+    d.className = 'fx-dot' + (purple ? ' purple' : '');
+    const size = 4 + Math.random() * 8;
+    d.style.width = size + 'px';
+    d.style.height = size + 'px';
+    d.style.left = (Math.random() * 100) + 'vw';
+    d.style.setProperty('--dx', (Math.random() * 80 - 40) + 'px');
+    const dur = 7 + Math.random() * 7;
+    d.style.animationDuration = dur + 's';
+    layer.appendChild(d);
+    setTimeout(() => d.remove(), dur * 1000 + 200);
+  }
+
+  // лёгкая плотность, чтобы не грузить мобильные
+  for (let i = 0; i < 10; i++) setTimeout(spawn, Math.random() * 6000);
+  setInterval(() => {
+    if (document.hidden) return;            // не плодим в фоне вкладки
+    if (layer.childElementCount < 26) spawn();
+  }, 650);
+})();
